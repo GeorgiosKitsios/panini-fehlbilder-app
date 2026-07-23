@@ -10,22 +10,20 @@
 
   function ensureWorker() {
     if (worker) return worker;
-    worker = new Worker('./local-ai-worker.js?v=12', { type: 'module' });
+    worker = new Worker('./local-ai-worker.js?v=13', { type: 'module' });
     worker.onmessage = (event) => {
       const data = event.data || {};
       if (data.status === 'progress') {
         const progress = Number(data.event?.progress);
-        if (Number.isFinite(progress)) {
-          message(`Lokales KI-Modell wird geladen … ${Math.round(progress)} %`, 'work');
-        } else {
-          message('Lokales KI-Modell wird geladen …', 'work');
-        }
+        message(Number.isFinite(progress) ? `Lokales KI-Modell wird geladen … ${Math.round(progress)} %` : 'Lokales KI-Modell wird geladen …', 'work');
       } else if (data.status === 'ready') {
         modelReady = true;
         if (pendingResolve) pendingResolve(data);
         pendingResolve = pendingReject = null;
-      } else if (data.status === 'analysing') {
-        message('Die lokale KI prüft alle 20 Stickerfelder …', 'work');
+      } else if (data.status === 'analysing-code') {
+        message('Die lokale KI erkennt zuerst das Team …', 'work');
+      } else if (data.status === 'analysing-fields') {
+        message(`Team ${data.code || ''} erkannt. Jetzt werden alle 20 Stickerfelder geprüft …`, 'work');
       } else if (data.status === 'complete') {
         if (pendingResolve) pendingResolve(data.output);
         pendingResolve = pendingReject = null;
@@ -69,31 +67,15 @@
     return canvas.toDataURL('image/jpeg', 0.84);
   }
 
-  function parseCompactResult(text) {
-    const raw = String(text || '').toUpperCase();
-    const codeMatches = [...raw.matchAll(/\bCODE\s*[:=]\s*([A-Z]{3})\b/g)];
-    const stateMatches = [...raw.matchAll(/\bSTATE\s*[:=]\s*([^\r\n]+)/g)];
-    const code = codeMatches.at(-1)?.[1] || '';
-
-    let state = '';
-    for (let index = stateMatches.length - 1; index >= 0; index--) {
-      const candidate = stateMatches[index][1].replace(/[^FEU]/g, '');
-      if (candidate.length === 20) {
-        state = candidate;
-        break;
-      }
-    }
-
-    if (!code || !state) {
-      throw new Error('Die KI-Antwort war unvollständig. Bitte die Auswertung noch einmal starten.');
-    }
-    if (!VALID_CODES.has(code)) {
-      throw new Error(`Der Teamcode ${code} wurde nicht sicher erkannt.`);
-    }
+  function validateResult(value) {
+    const code = String(value?.code || '').trim().toUpperCase();
+    const state = String(value?.state || '').trim().toUpperCase();
+    if (!VALID_CODES.has(code)) throw new Error(`Der Teamcode ${code || 'ist leer'} wurde nicht sicher erkannt.`);
+    if (!/^[FEU]{20}$/.test(state)) throw new Error('Die KI hat nicht alle 20 Stickerfelder vollständig bewertet.');
 
     const missing = [];
     const uncertain = [];
-    for (let index = 0; index < state.length; index++) {
+    for (let index = 0; index < 20; index++) {
       if (state[index] === 'E') missing.push(index + 1);
       else if (state[index] === 'U') uncertain.push(index + 1);
     }
@@ -142,7 +124,7 @@
       await loadModel();
       const output = await waitFor('analyse', { image: canvasForAI() });
       console.debug('[local-ai] Rohantwort:', output);
-      const result = parseCompactResult(output);
+      const result = validateResult(output);
       el.code.value = result.code;
       el.country.value = NAMES[result.code] || result.code;
       setNumbers(result.missing);
