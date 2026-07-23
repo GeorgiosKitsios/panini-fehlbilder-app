@@ -1,6 +1,7 @@
 import {
   AutoProcessor,
   AutoModelForVision2Seq,
+  TextStreamer,
   load_image,
 } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.1';
 
@@ -35,49 +36,80 @@ async function getModel() {
   return Promise.all([processorPromise, modelPromise]);
 }
 
-const PROMPT = `You are inspecting one photographed team double-page from the Panini album Road to FIFA World Cup 2026.
+const CODE_PROMPT = `Look only at the photographed Panini team double-page.
+Identify the team from the large team heading and the same three-letter code repeated inside that team's empty sticker placeholders.
+Ignore codes in group tables, schedules, flags and side panels.
+Output only the actual three-letter team code as exactly three uppercase letters. No label, punctuation, explanation or markdown.`;
 
-Inspect the actual photo and return exactly two short lines and nothing else.
-First line: write the word CODE, an equals sign, and the actual three-letter team code visible on this page.
-Second line: write the word STATE, an equals sign, and exactly 20 letters with no spaces. Character 1 is sticker position 1, character 20 is sticker position 20.
-Use only these letters in STATE:
-F = filled: a sticker covers the printed placeholder.
-E = empty: the printed placeholder is visible and no sticker covers it.
-U = unclear: the position is cropped, unreadable, or genuinely ambiguous.
+function statePrompt(code) {
+  return `Look only at the photographed Panini team double-page for team ${code}.
+There are exactly 20 numbered sticker positions, in numeric order 1 through 20.
+For every position output one letter:
+F if a sticker covers the printed placeholder.
+E if the printed empty placeholder is visible and no sticker covers it.
+U only if the position is cropped, unreadable or genuinely ambiguous.
+Output exactly 20 letters total, one per position from 1 to 20, with no spaces, label, punctuation, explanation or markdown.`;
+}
 
-Rules:
-- Mentally orient the album page correctly even if the photo is rotated.
-- Identify the team from the large team heading and the repeated three-letter code printed inside that team's sticker placeholders.
-- Ignore codes in group tables, schedules, flags, or side panels belonging to other teams.
-- Inspect all 20 sticker positions individually and preserve their numeric order from 1 to 20.
-- Never invent a team code or position status.
-- Do not explain the answer. Do not use markdown, JSON, punctuation lists, or extra text.`;
-
-async function analyse(imageDataUrl) {
-  const [processor, model] = await getModel();
-  post('analysing');
-
-  const image = await load_image(imageDataUrl);
+async function generateText(processor, model, image, prompt, maxNewTokens) {
   const messages = [{
     role: 'user',
     content: [
-      { type: 'image', image: imageDataUrl },
-      { type: 'text', text: PROMPT },
+      { type: 'image', image },
+      { type: 'text', text: prompt },
     ],
   }];
-
   const text = processor.apply_chat_template(messages, { add_generation_prompt: true });
   const inputs = await processor(text, [image], { do_image_splitting: true });
-  const output = await model.generate({
+  let generated = '';
+  const streamer = new TextStreamer(processor.tokenizer, {
+    skip_prompt: true,
+    skip_special_tokens: true,
+    callback_function: (chunk) => {
+      generated += String(chunk || '');
+    },
+  });
+  await model.generate({
     ...inputs,
     do_sample: false,
-    repetition_penalty: 1.08,
-    max_new_tokens: 72,
+    repetition_penalty: 1.05,
+    max_new_tokens: maxNewTokens,
+    streamer,
   });
-  const decoded = processor.batch_decode(output, {
-    skip_special_tokens: true,
-  })[0] || '';
-  post('complete', { output: decoded });
+  return generated.trim();
+}
+
+function parseCode(text) {
+  const matches = String(text || '').toUpperCase().match(/[A-Z]{3}/g) || [];
+  if (!matches.length) throw new Error(`Kein Teamcode in der KI-Antwort: ${String(text || '').slice(0, 80)}`);
+  return matches[matches.length - 1];
+}
+
+function parseState(text) {
+  const raw = String(text || '').toUpperCase().trim();
+  const direct = raw.match(/(?:^|[^FEU])([FEU]{20})(?![FEU])/);
+  if (direct) return direct[1];
+
+  const afterEquals = raw.includes('=') ? raw.slice(raw.lastIndexOf('=') + 1) : raw;
+  const compact = afterEquals.replace(/[^FEU]/g, '');
+  if (compact.length === 20) return compact;
+
+  throw new Error(`Keine vollständige 20-Felder-Antwort: ${raw.slice(0, 100)}`);
+}
+
+async function analyse(imageDataUrl) {
+  const [processor, model] = await getModel();
+  const image = await load_image(imageDataUrl);
+
+  post('analysing-code');
+  const rawCode = await generateText(processor, model, image, CODE_PROMPT, 12);
+  const code = parseCode(rawCode);
+
+  post('analysing-fields', { code });
+  const rawState = await generateText(processor, model, image, statePrompt(code), 32);
+  const state = parseState(rawState);
+
+  post('complete', { output: { code, state, rawCode, rawState } });
 }
 
 self.addEventListener('message', async (event) => {
