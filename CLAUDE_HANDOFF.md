@@ -457,3 +457,19 @@ Hinweis: Die Abschnitte 1–14 oben beschreiben den Stand bei `appv=10`. Der Cod
 - **Keine funktionierende Fehlbild-Erkennung**: Diese Runde liefert nur die geometrische Grundlage. 20-Felder-Klassifikation und Teamcode-OCR folgen erst in einer weiteren Runde, nachdem diese Grundlage auf echten Fotos und dem Zielgerät bestätigt wurde.
 - **Kopfstand-Erkennung ungelöst**: siehe `detectOrientation` oben – bewusste, dokumentierte Lücke.
 - Die bestehende Duplikatprüfung (nach `country`+`number`, nicht nach `code`) wurde nicht verändert – weiterhin anfällig für unterschiedliche Schreibweisen desselben Landes.
+
+## 16. Runde 2026-07-23 (Abend), Versuch E: Geometrie + Kandidatenfelder + OCR
+
+Direkt im Anschluss an Abschnitt 15, auf Wunsch des Nutzers, der die noch fehlende automatische Erkennung zu Recht angemahnt hat. Ziel war, auf dem Geometrie-Fundament aufzusetzen und tatsächlich automatisch zu erkennen, welche Positionen leer sind.
+
+**Ansatz:** Seite entzerren (bestehende Funktionen) → Seite in Blöcke zerlegen und pro Block die Farbvielfalt messen (Fotos haben deutlich mehr unterschiedliche Farben als grafische Platzhalterfelder – gemessen ca. 250–320 vs. ca. 70 Farben) → Blöcke mit geringster Farbvielfalt als Kandidaten → Ausschnitt binarisieren → Tesseract-OCR → Muster „3 Buchstaben + 1–2 Ziffern" gegen die Länderliste prüfen.
+
+**Ehrlich gemessenes Ergebnis** (Skript `legacy/2026-07-ocr-versuch-e/validate-ocr.mjs`, gegen alle 6 verfügbaren echten Testfotos): **6 von 45 tatsächlich fehlenden Nummern richtig gefunden (13 % Trefferquote), 3 falsche Treffer.** Details und Rohdaten siehe [`legacy/2026-07-ocr-versuch-e/README.md`](../legacy/2026-07-ocr-versuch-e/README.md).
+
+**Warum das nicht ausreicht:**
+
+1. Die Zellsegmentierung (welche Blöcke gehören zusammen) generalisiert nicht zuverlässig über unterschiedliche Seitenlayouts – auf einem Foto (Haiti) wurden gar keine brauchbaren Kandidaten gefunden, obwohl die gleichen Einstellungen auf einem anderen Foto (Australien) funktionierten.
+2. Tesseract verwechselt bei dieser Schriftart/Größe systematisch einzelne Ziffern (z. B. „10" wurde wiederholt als „19" gelesen) – auch eine Mehrfachprüfung mit unterschiedlichen Zuschnitten hat das nicht zuverlässig abgefangen, weil der Fehler nicht zufällig, sondern wiederholbar war.
+3. Für eine brauchbare Erkennung wären pro Foto 15–35+ einzelne OCR-Durchläufe nötig gewesen – auf einem Handy im Browser realistisch zu langsam, mit demselben Risiko wie beim lokalen KI-Modell (Versuch D).
+
+**Konsequenz:** Dieser Versuch wurde **nicht** in `index.html`/`sw.js`/den Labs-Modus eingebaut, sondern nach `legacy/2026-07-ocr-versuch-e/` archiviert. Für Nutzer und Labs-Modus ändert sich nichts gegenüber Abschnitt 15. Konkrete Empfehlung für die nächste Runde steht im dortigen README (bessere, layoutunabhängige Zellsegmentierung; ein auf diese Schriftart trainierter Ziffern-Klassifikator statt generischem OCR; Laufzeitmessung auf echtem Android-Gerät vor jedem weiteren Ausbau).

@@ -1,1 +1,4 @@
 node_modules/
+*.traineddata
+scratch/
+legacy/2026-07-ocr-versuch-e/_validate-tmp.jpg
