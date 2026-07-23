@@ -10,7 +10,7 @@
 
   function ensureWorker() {
     if (worker) return worker;
-    worker = new Worker('./local-ai-worker.js?v=10', { type: 'module' });
+    worker = new Worker('./local-ai-worker.js?v=11', { type: 'module' });
     worker.onmessage = (event) => {
       const data = event.data || {};
       if (data.status === 'progress') {
@@ -71,25 +71,69 @@
 
   function extractJSON(text) {
     const cleaned = String(text || '').replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
-    const matches = cleaned.match(/\{[\s\S]*?\}/g) || [];
-    for (let index = matches.length - 1; index >= 0; index--) {
+    const candidates = [];
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = 0; index < cleaned.length; index++) {
+      const char = cleaned[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') inString = false;
+        continue;
+      }
+      if (char === '"') {
+        inString = true;
+      } else if (char === '{') {
+        if (depth === 0) start = index;
+        depth++;
+      } else if (char === '}' && depth > 0) {
+        depth--;
+        if (depth === 0 && start >= 0) {
+          candidates.push(cleaned.slice(start, index + 1));
+          start = -1;
+        }
+      }
+    }
+
+    for (let index = candidates.length - 1; index >= 0; index--) {
       try {
-        const value = JSON.parse(matches[index]);
-        if (value && typeof value === 'object') return value;
+        const value = JSON.parse(candidates[index]);
+        if (value && typeof value === 'object' && value.code && value.positions) return value;
       } catch {}
     }
-    throw new Error('Die KI-Antwort konnte nicht gelesen werden.');
+    throw new Error('Die KI-Antwort konnte nicht als vollständiges JSON gelesen werden.');
   }
 
   function validateResult(value) {
     const code = String(value.code || '').trim().toUpperCase();
     if (!VALID_CODES.has(code)) throw new Error(`Der Teamcode ${code || 'ist leer'} wurde nicht sicher erkannt.`);
-    const missing = [...new Set((Array.isArray(value.missing) ? value.missing : []).map(Number))]
-      .filter((number) => Number.isInteger(number) && number >= 1 && number <= 20)
-      .sort((a, b) => a - b);
-    const uncertain = [...new Set((Array.isArray(value.uncertain) ? value.uncertain : []).map(Number))]
-      .filter((number) => Number.isInteger(number) && number >= 1 && number <= 20 && !missing.includes(number))
-      .sort((a, b) => a - b);
+
+    const positions = value.positions;
+    if (!positions || typeof positions !== 'object' || Array.isArray(positions)) {
+      throw new Error('Die KI hat keine gültige Positionsliste geliefert. Bitte erneut versuchen.');
+    }
+    const positionKeys = Object.keys(positions);
+    if (positionKeys.length !== 20 || positionKeys.some((key) => !/^(?:[1-9]|1\d|20)$/.test(key))) {
+      throw new Error(`Die KI hat keine vollständige 1–20-Positionsliste geliefert (${positionKeys.length}/20). Bitte erneut versuchen.`);
+    }
+
+    const missing = [];
+    const uncertain = [];
+    let seen = 0;
+
+    for (let number = 1; number <= 20; number++) {
+      const status = String(positions[String(number)] || '').trim().toLowerCase();
+      if (!status) throw new Error(`Die KI hat Feld ${number} nicht bewertet (nur ${seen}/20 Felder geliefert). Bitte erneut versuchen oder manuell eintragen.`);
+      if (status === 'empty') missing.push(number);
+      else if (status === 'unclear') uncertain.push(number);
+      else if (status !== 'filled') throw new Error(`Unbekannter Status "${status}" bei Feld ${number}. Bitte erneut versuchen oder manuell eintragen.`);
+      seen++;
+    }
+
     return { code, missing, uncertain };
   }
 
@@ -134,6 +178,7 @@
       if (!navigator.gpu) throw new Error('Dieses Android-Gerät unterstützt WebGPU nicht. Bitte Chrome aktualisieren.');
       await loadModel();
       const output = await waitFor('analyse', { image: canvasForAI() });
+      console.debug('[local-ai] Rohantwort:', output);
       const result = validateResult(extractJSON(output));
       el.code.value = result.code;
       el.country.value = NAMES[result.code] || result.code;
