@@ -1,4 +1,4 @@
-const CACHE='panini-fehlbilder-v4';
+const CACHE='panini-fehlbilder-v5';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg','./detector.js'];
 
 self.addEventListener('install',event=>{
@@ -6,11 +6,19 @@ self.addEventListener('install',event=>{
 });
 
 self.addEventListener('activate',event=>{
-  event.waitUntil(
-    caches.keys()
-      .then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key))))
-      .then(()=>self.clients.claim())
-  );
+  event.waitUntil((async()=>{
+    const keys=await caches.keys();
+    await Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)));
+    await self.clients.claim();
+    const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    for(const client of clients){
+      const url=new URL(client.url);
+      if(url.origin===self.location.origin){
+        url.searchParams.set('appv','5');
+        client.navigate(url.href);
+      }
+    }
+  })());
 });
 
 async function appShell(request){
@@ -22,10 +30,13 @@ async function appShell(request){
   }
   if(!response)return new Response('Offline',{status:503});
   let html=await response.text();
-  if(!html.includes('detector.js')){
-    html=html.replace('</body>','<script src="detector.js?v=4"></script></body>');
-  }
-  return new Response(html,{status:response.status,statusText:response.statusText,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
+  html=html.replace(/<script\s+src=["']detector\.js[^>]*><\/script>/gi,'');
+  html=html.replace('</body>','<script src="./detector.js?v=5"></script></body>');
+  return new Response(html,{
+    status:response.status,
+    statusText:response.statusText,
+    headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, no-cache, must-revalidate'}
+  });
 }
 
 self.addEventListener('fetch',event=>{
@@ -36,7 +47,7 @@ self.addEventListener('fetch',event=>{
     return;
   }
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request,{cache:'no-store'})
       .then(response=>{
         const copy=response.clone();
         caches.open(CACHE).then(cache=>cache.put(event.request,copy));
