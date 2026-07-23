@@ -20,7 +20,7 @@
 <section class="card"><div class="head"><span class="step">3</span><h2>Fehlbilder-Liste</h2></div><div class="body"><div id="summary" class="summary">Noch keine Sticker erfasst.</div><div class="toolbar"><input id="search" placeholder="Land, Code oder Nummer suchen"><span id="counter" class="counter">0 Einträge</span></div><div id="empty" class="empty">Noch keine Einträge.</div><div id="list" class="list hidden"></div><div class="buttons" style="margin-top:12px"><button id="csv" class="btn primary">CSV für Excel</button><button id="copy" class="btn secondary">Liste kopieren</button><button id="backup" class="btn secondary">Sicherung</button><label class="pick secondary">Sicherung laden<input id="restore" type="file" accept="application/json"></label><button id="clear" class="btn danger">Alles löschen</button></div></div></section>
 </main>
 <div id="cameraModal" class="modal hidden"><div class="camera-box"><video id="video" autoplay playsinline muted></video><div class="camera-actions"><button id="capture" class="btn primary">Foto aufnehmen</button><button id="closeCamera" class="btn secondary">Abbrechen</button></div></div></div>
-<script src="core/rules.js?v=16"></script>
+<script src="core/rules.js?v=17"></script>
 <script>
 const $=id=>document.getElementById(id),K=PaniniCore.STORAGE_KEY;
 let rows=[],image=null,deferredPrompt=null,stream=null;
@@ -51,9 +51,11 @@ el.copy.onclick=async()=>{const g={};rows.forEach(x=>(g[x.country]??=[]).push(x.
 el.backup.onclick=()=>download('Panini_Sicherung.json','application/json',JSON.stringify({version:6,rows},null,2));el.restore.onchange=async()=>{try{const j=JSON.parse(await el.restore.files[0].text());rows=PaniniCore.parseBackup(j);save();message('Sicherung geladen.')}catch{message('Ungültige Sicherung.','err')}};el.clear.onclick=()=>{if(rows.length&&confirm('Wirklich alle Einträge löschen?')){rows=[];save()}};
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;el.install.classList.add('show')});el.install.onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;el.install.classList.remove('show')}};if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});load();
 </script>
-<script src="list-groups.js?v=16"></script>
-<script src="detection/geometry.js?v=16"></script>
-<script src="detection/template.js?v=16"></script>
-<script src="detection/ui.js?v=16"></script>
+<script src="list-groups.js?v=17"></script>
+<script src="detection/geometry.js?v=17"></script>
+<script src="detection/template.js?v=17"></script>
+<script src="detection/flag.js?v=17"></script>
+<script src="detection/flag-db.js?v=17"></script>
+<script src="detection/ui.js?v=17"></script>
 </body>
 </html>

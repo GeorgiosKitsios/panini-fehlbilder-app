@@ -21,13 +21,13 @@
 
   function updateOcrButton() {
     el.ocr.disabled = !image;
-    el.ocr.textContent = '🔎 Fehlende Nummern vorschlagen (Labs)';
-    el.ocr.title = 'Entwicklungsvorschau: schlägt fehlende Nummern anhand des Fotos vor. Bitte immer mit der echten Albumseite vergleichen, bevor du speicherst. Teamcode bitte weiterhin selbst eintragen.';
+    el.ocr.textContent = '🔎 Nummern & Land vorschlagen (Labs)';
+    el.ocr.title = 'Entwicklungsvorschau: schlägt fehlende Nummern und (falls die Flagge erkannt wird) das Land vor. Bitte immer mit der echten Albumseite vergleichen, bevor du speicherst.';
   }
 
   const warning = document.querySelector('.warn');
   if (warning) {
-    warning.innerHTML = '<b>Labs-Modus aktiv:</b> Diese Vorschau schlägt fehlende Nummern anhand des Fotos vor (getestet an 6 echten Fotos: 98% Trefferquote, keine Falsch-Treffer, aber noch nicht auf einem Android-Gerät geprüft). Bitte den Vorschlag immer mit der echten Albumseite abgleichen, bevor du speicherst. Teamcode bitte weiterhin selbst eintragen.';
+    warning.innerHTML = '<b>Labs-Modus aktiv:</b> Diese Vorschau schlägt fehlende Nummern (getestet an 6 echten Fotos: 98% Trefferquote, keine Falsch-Treffer) und das Land per Flaggenfarbe vor (nur 6 von ~46 Ländern an echten Fotos getestet, Rest aus Flaggendesign abgeleitet und ungeprüft). Bitte den Vorschlag immer mit der echten Albumseite abgleichen, bevor du speicherst.';
   }
 
   const originalSetCanvas = setCanvasFromSource;
@@ -59,12 +59,30 @@
       const page = PaniniGeometry.dewarpPerspective(pixels, bounds.corners, 1200, 900);
       const states = PaniniTemplate.detectSlotStates(page);
       const missing = states.filter(s => s.empty).map(s => s.number);
-
       setNumbers(missing);
+
+      let countryNote = 'Land nicht erkannt – bitte selbst eintragen.';
+      try {
+        const flagRegion = PaniniFlag.locateFlag(page);
+        const flagSig = PaniniFlag.extractSignature(page, flagRegion);
+        const flagResult = PaniniFlag.matchFlag(flagSig, PaniniFlagDB.FLAG_DB);
+        if (flagResult.code) {
+          el.code.value = flagResult.code;
+          el.country.value = NAMES[flagResult.code] || flagResult.code;
+          const tested = PaniniFlagDB.VALIDATED_CODES.has(flagResult.code);
+          countryNote = `Land-Vorschlag: ${el.country.value} (${flagResult.code})${tested ? '' : ' – ungeprüfter Vorschlag, bitte besonders sorgfältig prüfen'}.`;
+        } else {
+          countryNote = 'Land nicht sicher erkannt (zu unsicher zwischen mehreren Kandidaten) – bitte selbst eintragen.';
+        }
+      } catch (flagError) {
+        console.error(flagError);
+      }
+
       message(
-        missing.length
-          ? `Vorschlag: ${missing.length} möglicherweise fehlende Nummer(n): ${missing.join(', ')}. Bitte mit der echten Albumseite abgleichen und Teamcode selbst eintragen, bevor du speicherst.`
-          : 'Keine fehlenden Nummern vorgeschlagen. Bitte trotzdem mit der echten Albumseite abgleichen, falls doch etwas fehlt.',
+        (missing.length
+          ? `Vorschlag: ${missing.length} möglicherweise fehlende Nummer(n): ${missing.join(', ')}. `
+          : 'Keine fehlenden Nummern vorgeschlagen. ') +
+        countryNote + ' Bitte alles mit der echten Albumseite abgleichen, bevor du speicherst.',
         'work'
       );
     } catch (error) {

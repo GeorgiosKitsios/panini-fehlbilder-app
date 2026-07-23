@@ -486,3 +486,27 @@ Ergänzend im echten Browser (nicht nur Node.js) mit einem herunterskalierten Te
 - **Schwellwert an kleiner Stichprobe kalibriert** (6 Fotos, 120 Slots). Weitere echte Fotos würden die Zuverlässigkeit der Kalibrierung erhöhen.
 - **Teamcode wird weiterhin nicht automatisch erkannt** – bewusst nicht Teil dieses Versuchs, um den erfolgreichen Teil (Nummern-Vorschlag) nicht durch das bekannt fehleranfällige Ziffern-/Buchstaben-OCR zu gefährden.
 - Positions-Rechtecke sind ein Kompromiss über mehrere Fotos, nicht pixelgenau für jedes einzelne (siehe Kommentare in `detection/template.js`) – funktioniert dank Innenrand-Toleranz trotzdem zuverlässig, aber bei stark abweichenden Fotoausschnitten nicht ausgeschlossen, dass es an den Rändern ungenauer wird.
+
+## 17. Runde 2026-07-24, Versuch G: Land per Flaggenfarbe statt Text-OCR
+
+Auf Wunsch des Nutzers nach Abschnitt 16: Der Teamcode wurde dort bewusst nicht automatisch erkannt. Idee des Nutzers: nicht die Buchstaben lesen (Text-OCR, die bekannte Fehlerquelle), sondern die kleine Flagge erkennen, die auf jeder Seite an fast der gleichen Stelle steht (unter "WE ARE X", neben "Fédération/Association X").
+
+**Ansatz** (`detection/flag.js`, `detection/flag-db.js`):
+
+1. Flaggen-Position im entzerrten Bild lokalisieren: fester grosszuegiger Suchbereich + Blob-Erkennung (zusammenhaengende, ausreichend gesaettigte Bildbloecke) zur Verfeinerung. Bei Flaggen mit viel Weiss/wenig Sättigung (Schottland, USA, Australien) schlägt die Verfeinerung fehl, dann Rueckfall auf eine Standardposition – funktioniert trotzdem, weil Referenz- und Abfrage-Signatur mit derselben Logik erzeugt werden.
+2. 3x3-Farbraster der gefundenen Region als Signatur (erfasst grobe Streifen-/Kreuz-/Kanton-Muster ohne Text zu lesen).
+3. Vergleich gegen eine Referenzdatenbank aller ~46 Ländercodes aus der `NAMES`-Tabelle per naechstem Nachbarn. Bei zu geringem Abstand zwischen bestem und zweitbestem Kandidaten: **kein** Vorschlag statt Raten (siehe unten, z. B. Tunesien/Schweiz/Türkei).
+
+**Ehrlich gemessenes Ergebnis:**
+
+- **6 von 6 echten Testfotos korrekt erkannt** (`tests/flag.fixtures.test.js`), mit grossem Sicherheitsabstand (Distanz 0,4–0,5 zum eigenen Referenzwert gegenüber 40–68 zum naechsten anderen Land).
+- Referenzdatenbank enthaelt fuer diese 6 Codes (MAR, HAI, SCO, USA, PAR, AUS) echte, aus den Testfotos extrahierte Werte. Die restlichen **~40 Codes sind aus bekanntem Flaggendesign abgeleitete Näherungswerte, nicht fotografisch validiert** – koennen bei echten Fotos abweichen.
+- Bekannte, bei dieser Aufloesung (3x3-Raster) nicht unterscheidbare Gruppen: **Tunesien/Schweiz/Türkei** (rotes Feld mit hellem Zentralsymbol – Mondsichel+Stern vs. Kreuz lässt sich bei dieser Aufloesung farblich nicht trennen) und ein enger Abstand bei **Ecuador/Kolumbien** (beide gelb-blau-rote Trikolore). Der Matcher gibt in solchen Fällen **keinen** Ländervorschlag aus, statt zu raten.
+
+**In die App eingebaut** (`detection/ui.js`, weiterhin nur mit `?labs=1`): Der bestehende "Vorschlagen"-Button fuellt jetzt zusaetzlich Land und Code, wenn die Flagge sicher genug erkannt wurde. Ungeprüfte (nicht an echten Fotos getestete) Ländervorschläge werden im Hinweistext ausdrücklich als solche markiert. Nichts wird automatisch gespeichert – der Nutzer muss weiterhin mit der echten Albumseite abgleichen. Cache-Version auf v17.
+
+### Offene Punkte
+
+- Nur 6 von ~46 Ländern sind an echten Fotos getestet. Weitere echte Testfotos wuerden die Zuverlaessigkeit der uebrigen ~40 Referenzwerte deutlich erhoehen.
+- Flaggen mit aehnlichem Farblayout (siehe oben) werden bewusst als unsicher behandelt statt geraten – das ist Absicht, nicht ein Bug, schraenkt aber die Abdeckung ein.
+- Kein Android-Gerätetest (wie bei Abschnitt 16 – Rechenlast ist aber gering: nur ein zusaetzliches kleines Farbraster pro Foto, kein OCR, kein KI-Modell).
