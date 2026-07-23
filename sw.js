@@ -1,5 +1,5 @@
-const CACHE='panini-fehlbilder-v5';
-const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg','./detector.js'];
+const CACHE='panini-fehlbilder-v6';
+const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg','./detector-v2.js'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
@@ -14,7 +14,7 @@ self.addEventListener('activate',event=>{
     for(const client of clients){
       const url=new URL(client.url);
       if(url.origin===self.location.origin){
-        url.searchParams.set('appv','5');
+        url.searchParams.set('appv','6');
         client.navigate(url.href);
       }
     }
@@ -30,8 +30,8 @@ async function appShell(request){
   }
   if(!response)return new Response('Offline',{status:503});
   let html=await response.text();
-  html=html.replace(/<script\s+src=["']detector\.js[^>]*><\/script>/gi,'');
-  html=html.replace('</body>','<script src="./detector.js?v=5"></script></body>');
+  html=html.replace(/<script\s+src=["']detector(?:-v2)?\.js[^>]*><\/script>/gi,'');
+  html=html.replace('</body>','<script src="./detector-v2.js?v=6"></script></body>');
   return new Response(html,{
     status:response.status,
     statusText:response.statusText,
