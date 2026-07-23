@@ -1,5 +1,5 @@
-const CACHE='panini-fehlbilder-v13';
-const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg','./list-groups.js','./local-ai.js','./local-ai-worker.js'];
+const CACHE='panini-fehlbilder-v14';
+const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg','./list-groups.js','./manual-mode.js'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
@@ -13,7 +13,7 @@ self.addEventListener('activate',event=>{
     const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
     for(const client of clients){
       const url=new URL(client.url);
-      if(url.origin===self.location.origin){url.searchParams.set('appv','13');client.navigate(url.href);}
+      if(url.origin===self.location.origin){url.searchParams.set('appv','14');client.navigate(url.href);}
     }
   })());
 });
@@ -24,7 +24,7 @@ async function appShell(request){
   if(!response)return new Response('Offline',{status:503});
   let html=await response.text();
   html=html.replace(/<script\s+src=["'](?:detector(?:-v2)?|country-fix|list-groups|manual-mode|local-ai)\.js[^>]*><\/script>/gi,'');
-  html=html.replace('</body>','<script src="./list-groups.js?v=13"></script><script src="./local-ai.js?v=13"></script></body>');
+  html=html.replace('</body>','<script src="./list-groups.js?v=14"></script><script src="./manual-mode.js?v=14"></script></body>');
   return new Response(html,{status:response.status,statusText:response.statusText,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, no-cache, must-revalidate'}});
 }
 
