@@ -1,5 +1,5 @@
-const CACHE='panini-fehlbilder-v8';
-const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg','./detector-v2.js','./country-fix.js','./list-groups.js'];
+const CACHE='panini-fehlbilder-v9';
+const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg','./detector-v2.js','./country-fix.js','./list-groups.js','./manual-mode.js'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
@@ -13,7 +13,7 @@ self.addEventListener('activate',event=>{
     const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
     for(const client of clients){
       const url=new URL(client.url);
-      if(url.origin===self.location.origin){url.searchParams.set('appv','8');client.navigate(url.href);}
+      if(url.origin===self.location.origin){url.searchParams.set('appv','9');client.navigate(url.href);}
     }
   })());
 });
@@ -23,8 +23,8 @@ async function appShell(request){
   try{response=await fetch(request,{cache:'no-store'});}catch{response=await caches.match('./index.html');}
   if(!response)return new Response('Offline',{status:503});
   let html=await response.text();
-  html=html.replace(/<script\s+src=["'](?:detector(?:-v2)?|country-fix|list-groups)\.js[^>]*><\/script>/gi,'');
-  html=html.replace('</body>','<script src="./detector-v2.js?v=8"></script><script src="./country-fix.js?v=8"></script><script src="./list-groups.js?v=8"></script></body>');
+  html=html.replace(/<script\s+src=["'](?:detector(?:-v2)?|country-fix|list-groups|manual-mode)\.js[^>]*><\/script>/gi,'');
+  html=html.replace('</body>','<script src="./detector-v2.js?v=9"></script><script src="./country-fix.js?v=9"></script><script src="./list-groups.js?v=9"></script><script src="./manual-mode.js?v=9"></script></body>');
   return new Response(html,{status:response.status,statusText:response.statusText,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, no-cache, must-revalidate'}});
 }
 
