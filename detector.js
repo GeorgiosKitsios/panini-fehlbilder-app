@@ -12,6 +12,37 @@
     18:[1060,715],19:[1230,715],20:[1400,715]
   };
 
+  const COUNTRY_WORDS = {
+    SWEDEN:'SWE',SVERIGE:'SWE',
+    TUNISIA:'TUN',TUNISIE:'TUN',TUNISIAH:'TUN',
+    JAPAN:'JPN',
+    ECUADOR:'ECU',
+    CURACAO:'CUW',CURACAOAO:'CUW',
+    NETHERLANDS:'NED',HOLLAND:'NED',
+    AUSTRALIA:'AUS',
+    TURKEY:'TUR',TURKIYE:'TUR',TURKIYE:'TUR',
+    MEXICO:'MEX',
+    SOUTHAFRICA:'RSA',
+    KOREA:'KOR',
+    CZECHIA:'CZE',
+    CANADA:'CAN',
+    QATAR:'QAT',
+    SWITZERLAND:'SUI',
+    BRAZIL:'BRA',
+    MOROCCO:'MAR',
+    SCOTLAND:'SCO',
+    PARAGUAY:'PAR',
+    GERMANY:'GER',
+    ARGENTINA:'ARG',
+    AUSTRIA:'AUT',
+    PORTUGAL:'POR',
+    COLOMBIA:'COL',
+    ENGLAND:'ENG',
+    CROATIA:'CRO',
+    GHANA:'GHA',
+    PANAMA:'PAN'
+  };
+
   // Logistic classifier trained only on anonymous image features from the supplied album pages.
   const MEAN = [35.86274347, 0.18822743, 86.13667021, 149.56106, 34.17270463];
   const SCALE = [7.97792671, 0.06266038, 25.71020591, 20.05058236, 11.62719658];
@@ -146,8 +177,11 @@
     image = {width:el.canvas.width,height:el.canvas.height};
   }
 
+  function compactText(value) {
+    return String(value || '').toUpperCase().replace(/[^A-Z]/g, '');
+  }
+
   async function detectTeamCode(source) {
-    if (VALID_CODES.has(el.code.value.trim().toUpperCase())) return el.code.value.trim().toUpperCase();
     let worker;
     try {
       await loadOCR();
@@ -158,12 +192,18 @@
         tessedit_pageseg_mode:'11'
       });
       const scores = {};
-      for (const deg of [0, 180]) {
+      for (const deg of [0, 90, 180, 270]) {
         const result = await worker.recognize(rotateCanvas(source, deg));
         const text = String(result.data?.text || '').toUpperCase();
+        const compact = compactText(text);
+
         for (const code of VALID_CODES) {
           const matches = text.match(new RegExp(`\\b${code}\\b`, 'g'));
-          if (matches) scores[code] = (scores[code] || 0) + matches.length;
+          if (matches) scores[code] = (scores[code] || 0) + matches.length * 4;
+        }
+
+        for (const [word, code] of Object.entries(COUNTRY_WORDS)) {
+          if (compact.includes(word)) scores[code] = (scores[code] || 0) + 3;
         }
       }
       const best = Object.entries(scores).sort((a,b) => b[1] - a[1])[0];
@@ -180,6 +220,9 @@
   setCanvasFromSource = function(source, width, height) {
     originalSetCanvas(source, width, height);
     cleanPhoto = cloneCanvas(el.canvas);
+    el.country.value = '';
+    el.code.value = '';
+    setNumbers([]);
   };
 
   const originalRotate = el.rotate.onclick;
@@ -192,18 +235,21 @@
   el.removePhoto.onclick = () => {
     originalRemove();
     cleanPhoto = null;
+    el.country.value = '';
+    el.code.value = '';
+    setNumbers([]);
   };
 
   if (image && el.canvas.width) cleanPhoto = cloneCanvas(el.canvas);
 
   el.ocr.textContent = '🔎 Leere Felder erkennen';
   const warning = document.querySelector('.warn');
-  if (warning) warning.innerHTML = '<b>Automatische Bilderkennung:</b> Die App prüft die 20 festen Stickerpositionen auf leere Felder. Grün bedeutet erkannt, Orange bedeutet unsicher. Bitte das Ergebnis vor dem Speichern kurz kontrollieren.';
+  if (warning) warning.innerHTML = '<b>Automatische Bilderkennung:</b> Die App prüft die 20 festen Stickerpositionen auf leere Felder und liest anschließend Land beziehungsweise Teamcode. Grün bedeutet erkannt, Orange bedeutet unsicher. Bitte kurz kontrollieren.';
 
   el.ocr.onclick = async () => {
     if (!image) return;
     el.ocr.disabled = true;
-    message('Prüfe die 20 Stickerfelder …', 'work');
+    message('Prüfe Stickerfelder und Land …', 'work');
     try {
       const source = canonicalPhoto();
       const ratio = source.width / source.height;
@@ -220,15 +266,16 @@
       const code = await detectTeamCode(source);
       if (code) {
         el.code.value = code;
-        el.country.value = NAMES[code] || el.country.value;
+        el.country.value = NAMES[code] || '';
       }
 
+      const countryNote = code ? `${NAMES[code] || code} (${code}) erkannt.` : 'Land nicht sicher erkannt; bitte Land und Code manuell auswählen.';
       if (!missing.length) {
-        message('Keine leeren Felder sicher erkannt. Bitte Foto gerader und näher aufnehmen.', 'err');
+        message(`Keine leeren Felder sicher erkannt. ${countryNote}`, 'err');
       } else if (uncertain.length) {
-        message(`Erkannt: ${missing.join(', ')}. Unsicher markiert: ${uncertain.join(', ')}. Bitte kurz kontrollieren.`);
+        message(`Erkannt: ${missing.join(', ')}. Unsicher: ${uncertain.join(', ')}. ${countryNote}`);
       } else {
-        message(`Erkannt: ${missing.join(', ')}. Bitte kurz mit der Albumseite vergleichen.`);
+        message(`Erkannt: ${missing.join(', ')}. ${countryNote}`);
       }
     } catch (error) {
       console.error(error);
