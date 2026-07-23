@@ -1,5 +1,5 @@
-const CACHE='panini-fehlbilder-v6';
-const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg','./detector-v2.js'];
+const CACHE='panini-fehlbilder-v7';
+const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg','./detector-v2.js','./country-fix.js'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
@@ -14,7 +14,7 @@ self.addEventListener('activate',event=>{
     for(const client of clients){
       const url=new URL(client.url);
       if(url.origin===self.location.origin){
-        url.searchParams.set('appv','6');
+        url.searchParams.set('appv','7');
         client.navigate(url.href);
       }
     }
@@ -23,20 +23,12 @@ self.addEventListener('activate',event=>{
 
 async function appShell(request){
   let response;
-  try{
-    response=await fetch(request,{cache:'no-store'});
-  }catch{
-    response=await caches.match('./index.html');
-  }
+  try{response=await fetch(request,{cache:'no-store'});}catch{response=await caches.match('./index.html');}
   if(!response)return new Response('Offline',{status:503});
   let html=await response.text();
-  html=html.replace(/<script\s+src=["']detector(?:-v2)?\.js[^>]*><\/script>/gi,'');
-  html=html.replace('</body>','<script src="./detector-v2.js?v=6"></script></body>');
-  return new Response(html,{
-    status:response.status,
-    statusText:response.statusText,
-    headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, no-cache, must-revalidate'}
-  });
+  html=html.replace(/<script\s+src=["'](?:detector(?:-v2)?|country-fix)\.js[^>]*><\/script>/gi,'');
+  html=html.replace('</body>','<script src="./detector-v2.js?v=7"></script><script src="./country-fix.js?v=7"></script></body>');
+  return new Response(html,{status:response.status,statusText:response.statusText,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, no-cache, must-revalidate'}});
 }
 
 self.addEventListener('fetch',event=>{
@@ -46,13 +38,5 @@ self.addEventListener('fetch',event=>{
     event.respondWith(appShell(event.request));
     return;
   }
-  event.respondWith(
-    fetch(event.request,{cache:'no-store'})
-      .then(response=>{
-        const copy=response.clone();
-        caches.open(CACHE).then(cache=>cache.put(event.request,copy));
-        return response;
-      })
-      .catch(()=>caches.match(event.request))
-  );
+  event.respondWith(fetch(event.request,{cache:'no-store'}).then(response=>{const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy));return response;}).catch(()=>caches.match(event.request)));
 });
