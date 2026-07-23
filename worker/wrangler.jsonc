@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "panini-fehlbilder-ai",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-23",
+  "workers_dev": true,
+  "vars": {
+    "ALLOWED_ORIGIN": "https://georgioskitsios.github.io",
+    "GEMINI_MODEL": "gemini-3.5-flash"
+  },
+  "secrets": {
+    "required": ["GEMINI_API_KEY"]
+  }
+}
