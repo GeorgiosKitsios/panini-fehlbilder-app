@@ -421,3 +421,39 @@ Ein reiner Promptwechsel beim aktuellen 256M-Modell reicht voraussichtlich nicht
 Die Verwaltungs- und Exportfunktionen sind brauchbar. Die automatische Bilderkennung, die den eigentlichen Produktwert darstellt, ist derzeit nicht gelöst. Version 10 beweist lediglich, dass ein kleines VLM lokal per WebGPU auf dem getesteten Gerät ausgeführt werden kann. Sie beweist nicht, dass dieses Modell die konkrete Panini-Aufgabe zuverlässig beherrscht.
 
 Diese Dokumentation wurde hinzugefügt, ohne den aktiven App-Code oder das Verhalten der App weiter zu verändern.
+
+## 15. Runde 2026-07-23: Architektur-Fundament (Branch `feature/architecture-foundation`)
+
+Hinweis: Die Abschnitte 1–14 oben beschreiben den Stand bei `appv=10`. Der Code war seither bis `appv=14` weitergelaufen (lokale KI per `manual-mode.js` deaktiviert, siehe Git-Historie), ohne dass dieses Dokument aktualisiert wurde. Dieser Abschnitt beschreibt die erste Runde danach.
+
+**Ziel dieser Runde:** Architektur-Fundament und Cleanup, **keine** produktionsreife Felderkennung. Mit dem Nutzer abgestimmt (siehe Konversation), weil die volle Felderkennung + Teamcode-OCR + Android-Gerätetest ein mehrwöchiges Vorhaben ist und ohne Zugriff auf ein echtes Android-Gerät nicht verantwortungsvoll live geschaltet werden kann.
+
+### Was in dieser Runde gemacht wurde
+
+- **Archiviert** (nicht gelöscht) nach `legacy/`, mit `legacy/README.md`: `detector.js`, `detector-v2.js`, `country-fix.js`, `local-ai.js`, `local-ai-worker.js`, `manual-mode.js`. Diese Dateien wurden von keinem Service Worker mehr geladen und überschrieben beim Laden global Funktionen nach Ladereihenfolge – ein Wartungsrisiko.
+- **Toter Inline-Code entfernt** aus `index.html`: der alte Tesseract-OCR-Handler (`el.ocr.onclick`, `loadOCR`, `rotatedCanvas`, `preprocess`, `parseResult`, `normToken`, `center`), der ohnehin nur über den (inzwischen dauerhaft deaktivierten) Button erreichbar war.
+- **Service-Worker vereinfacht**: `sw.js` macht kein HTML-String-Ersetzen mehr, um Skripte einzuschleusen. `index.html` referenziert seine Skripte jetzt selbst per `<script>`-Tag. Cache-Version auf `panini-fehlbilder-v15`.
+- **Reine Kernregeln extrahiert** nach `core/rules.js` (`STORAGE_KEY`, `parseNumbers`, `normalizeRows`, `parseBackup`) – gleiche Logik wie vorher, jetzt aber unabhängig vom Browser testbar. `localStorage`-Schlüssel bleibt unverändert `panini-fehlbilder-v3`; bestehende Nutzerdaten sind nicht betroffen.
+- **Geometrie-Fundament** in `detection/geometry.js` (siehe Datei-Kommentare für Details):
+  - `detectOrientation`: erkennt zuverlässig, ob eine Viertel-Drehung nötig ist (Hoch- vs. Querformat). **Löst bewusst nicht** die Kopfstand-Frage (0° vs. 180°, 90° vs. 270°) – ein erster Ansatz über eine "Buchfalz ist dunkler"-Heuristik erwies sich beim Nachrechnen als symmetrisch unter 180°-Drehung und wurde verworfen, statt eine nicht wirksame Funktion zu behalten. Der vorhandene manuelle "↻ Drehen"-Button bleibt der Fallback.
+  - `locateSpine`: findet die ruhigste vertikale Spalte (Kandidat für den Buchfalz) in einem bereits querformatigen Bild.
+  - `detectPageBounds`: findet die grob rechteckige Kontur der Albumseite gegenüber dem Hintergrund (Tisch, Boden), tolerant gegenüber leichter Verkantung (±15°). **Keine** echte Kamera-Perspektive (Trapez).
+  - `computeHomography` / `dewarpPerspective`: allgemeine 4-Punkt-Entzerrung, die echte Perspektive (Trapez, nicht nur Rotation) korrekt entzerrt – bereit für einen späteren, präziseren Eckendetektor.
+  - **Bewusst nicht enthalten:** 20-Felder-Klassifikation (leer/beklebt) und Teamcode-OCR.
+- **Opt-in-Flag** in `detection/ui.js`: Die neue Geometrie-Vorschau ist nur aktiv mit `?labs=1` in der URL oder `localStorage['panini-labs']==='1'`. Ohne dieses Flag ist das Verhalten für alle GitHub-Pages-Besucher identisch zu `appv=14` (Erkennungs-Button deaktiviert, Hinweistext "in Entwicklung"). Die Labs-Vorschau zeigt nur Rotationsbedarf und Kontur-Fläche an, speichert nichts automatisch und schreibt nie in `panini-fehlbilder-v3`.
+- **Tests** (`npm test`, Vitest, keine native Canvas-Abhängigkeit – Geometrie arbeitet auf rohen Pixel-Puffern statt auf `<canvas>`):
+  - `tests/parser.test.js`, `tests/storage.test.js`: Nummern-Parsing, Storage-Key-Regression, Migration, Backup-Format, sowie ein Quellcode-Guard, der sicherstellt, dass die neue Erkennung nie automatisch speichert.
+  - `tests/geometry.test.js`: synthetische Pixelbuffer mit exakt bekannten Ecken/Winkeln/Trapezen.
+  - `tests/geometry.fixtures.test.js`: läuft gegen 7 echte, lokal bereitgestellte Fotos (siehe unten) und deren programmatisch um 90°/180°/270° gedrehte Varianten. **Wird automatisch übersprungen**, wenn der Fixture-Ordner nicht existiert (z. B. in CI).
+  - Ergebnis zum Zeitpunkt dieses Commits: 55 von 56 Tests grün, 1 sinnvoll übersprungen (siehe PR für aktuellen Stand).
+
+### Testfotos (nicht im Repository)
+
+7 reale Fotos (u. a. Haiti-, Scotland-, USA-Doppelseiten) liegen lokal unter `C:\panini-fehlbilder-app-fixtures` auf dem Rechner des Nutzers und werden **nicht committet**. Sie decken **nicht** die 9 in Abschnitt 8 dokumentierten Ground-Truth-Länder (Tunesien, Japan, Schweden, Ecuador, Curaçao, Niederlande, Australien, Türkei, Tschechien) ab – für eine Validierung gegen die dort genannten Fehlbild-Werte fehlen weiterhin die passenden Fotos.
+
+### Offene Punkte / ausdrücklich nicht bewiesen
+
+- **Kein Android-Gerätetest**: RAM-Verbrauch, Laufzeit und Absturzsicherheit der neuen Geometrie-Pipeline auf einem echten Android-Gerät sind **nicht getestet** – kein Gerät verfügbar. Deshalb der Opt-in-Flag statt einer automatischen Aktivierung.
+- **Keine funktionierende Fehlbild-Erkennung**: Diese Runde liefert nur die geometrische Grundlage. 20-Felder-Klassifikation und Teamcode-OCR folgen erst in einer weiteren Runde, nachdem diese Grundlage auf echten Fotos und dem Zielgerät bestätigt wurde.
+- **Kopfstand-Erkennung ungelöst**: siehe `detectOrientation` oben – bewusste, dokumentierte Lücke.
+- Die bestehende Duplikatprüfung (nach `country`+`number`, nicht nach `code`) wurde nicht verändert – weiterhin anfällig für unterschiedliche Schreibweisen desselben Landes.
