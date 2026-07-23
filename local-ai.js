@@ -10,7 +10,7 @@
 
   function ensureWorker() {
     if (worker) return worker;
-    worker = new Worker('./local-ai-worker.js?v=11', { type: 'module' });
+    worker = new Worker('./local-ai-worker.js?v=12', { type: 'module' });
     worker.onmessage = (event) => {
       const data = event.data || {};
       if (data.status === 'progress') {
@@ -69,72 +69,35 @@
     return canvas.toDataURL('image/jpeg', 0.84);
   }
 
-  function extractJSON(text) {
-    const cleaned = String(text || '').replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
-    const candidates = [];
-    let start = -1;
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
+  function parseCompactResult(text) {
+    const raw = String(text || '').toUpperCase();
+    const codeMatches = [...raw.matchAll(/\bCODE\s*[:=]\s*([A-Z]{3})\b/g)];
+    const stateMatches = [...raw.matchAll(/\bSTATE\s*[:=]\s*([^\r\n]+)/g)];
+    const code = codeMatches.at(-1)?.[1] || '';
 
-    for (let index = 0; index < cleaned.length; index++) {
-      const char = cleaned[index];
-      if (inString) {
-        if (escaped) escaped = false;
-        else if (char === '\\') escaped = true;
-        else if (char === '"') inString = false;
-        continue;
-      }
-      if (char === '"') {
-        inString = true;
-      } else if (char === '{') {
-        if (depth === 0) start = index;
-        depth++;
-      } else if (char === '}' && depth > 0) {
-        depth--;
-        if (depth === 0 && start >= 0) {
-          candidates.push(cleaned.slice(start, index + 1));
-          start = -1;
-        }
+    let state = '';
+    for (let index = stateMatches.length - 1; index >= 0; index--) {
+      const candidate = stateMatches[index][1].replace(/[^FEU]/g, '');
+      if (candidate.length === 20) {
+        state = candidate;
+        break;
       }
     }
 
-    for (let index = candidates.length - 1; index >= 0; index--) {
-      try {
-        const value = JSON.parse(candidates[index]);
-        if (value && typeof value === 'object' && value.code && value.positions) return value;
-      } catch {}
+    if (!code || !state) {
+      throw new Error('Die KI-Antwort war unvollständig. Bitte die Auswertung noch einmal starten.');
     }
-    throw new Error('Die KI-Antwort konnte nicht als vollständiges JSON gelesen werden.');
-  }
-
-  function validateResult(value) {
-    const code = String(value.code || '').trim().toUpperCase();
-    if (!VALID_CODES.has(code)) throw new Error(`Der Teamcode ${code || 'ist leer'} wurde nicht sicher erkannt.`);
-
-    const positions = value.positions;
-    if (!positions || typeof positions !== 'object' || Array.isArray(positions)) {
-      throw new Error('Die KI hat keine gültige Positionsliste geliefert. Bitte erneut versuchen.');
-    }
-    const positionKeys = Object.keys(positions);
-    if (positionKeys.length !== 20 || positionKeys.some((key) => !/^(?:[1-9]|1\d|20)$/.test(key))) {
-      throw new Error(`Die KI hat keine vollständige 1–20-Positionsliste geliefert (${positionKeys.length}/20). Bitte erneut versuchen.`);
+    if (!VALID_CODES.has(code)) {
+      throw new Error(`Der Teamcode ${code} wurde nicht sicher erkannt.`);
     }
 
     const missing = [];
     const uncertain = [];
-    let seen = 0;
-
-    for (let number = 1; number <= 20; number++) {
-      const status = String(positions[String(number)] || '').trim().toLowerCase();
-      if (!status) throw new Error(`Die KI hat Feld ${number} nicht bewertet (nur ${seen}/20 Felder geliefert). Bitte erneut versuchen oder manuell eintragen.`);
-      if (status === 'empty') missing.push(number);
-      else if (status === 'unclear') uncertain.push(number);
-      else if (status !== 'filled') throw new Error(`Unbekannter Status "${status}" bei Feld ${number}. Bitte erneut versuchen oder manuell eintragen.`);
-      seen++;
+    for (let index = 0; index < state.length; index++) {
+      if (state[index] === 'E') missing.push(index + 1);
+      else if (state[index] === 'U') uncertain.push(index + 1);
     }
-
-    return { code, missing, uncertain };
+    return { code, missing, uncertain, state };
   }
 
   function setIdleButton() {
@@ -179,7 +142,7 @@
       await loadModel();
       const output = await waitFor('analyse', { image: canvasForAI() });
       console.debug('[local-ai] Rohantwort:', output);
-      const result = validateResult(extractJSON(output));
+      const result = parseCompactResult(output);
       el.code.value = result.code;
       el.country.value = NAMES[result.code] || result.code;
       setNumbers(result.missing);
