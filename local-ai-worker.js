@@ -36,19 +36,23 @@ async function getModel() {
 }
 
 const PROMPT = `You are inspecting one photographed team double-page from the Panini album Road to FIFA World Cup 2026.
-Return ONLY a compact valid JSON object in this exact shape:
-{"code":"JPN","missing":[2,3],"uncertain":[]}
+
+Return ONLY one compact valid JSON object. It must contain:
+- "code": the actual three-letter team code visible on this page.
+- "positions": an object with exactly the keys "1" through "20".
+- Every position value must be exactly one word: "filled", "empty", or "unclear".
+Do not output placeholders, angle brackets, pipe symbols, examples, or any additional keys.
 
 Rules:
 - Mentally orient the album page correctly even if the photo is rotated.
 - Identify the team from the large team heading and the repeated three-letter code printed inside that team's sticker placeholders.
 - Ignore three-letter codes in group tables, schedules, flags, or side panels belonging to other teams.
 - There are exactly 20 team sticker positions, numbered 1 through 20.
-- A position is missing only when the printed empty placeholder is visible and no sticker covers it.
-- A position is filled when a player, team, shirt, badge, or other sticker covers the placeholder.
-- Inspect all 20 positions individually.
-- Put only genuinely unreadable or cropped positions in uncertain.
-- Never include a number outside 1 through 20. Never repeat a number.
+- "empty": the printed placeholder is visible and no sticker covers it.
+- "filled": a player, team, shirt, badge, or other sticker covers the placeholder.
+- "unclear": only for a position that is genuinely unreadable, cropped, or ambiguous.
+- You must inspect and report all 20 positions individually. Never omit a number. Never repeat a number.
+- Never guess a status without actually looking at that specific position.
 - Do not explain the answer and do not use markdown.`;
 
 async function analyse(imageDataUrl) {
@@ -70,7 +74,7 @@ async function analyse(imageDataUrl) {
     ...inputs,
     do_sample: false,
     repetition_penalty: 1.08,
-    max_new_tokens: 120,
+    max_new_tokens: 220,
   });
   const decoded = processor.batch_decode(output, {
     skip_special_tokens: true,
