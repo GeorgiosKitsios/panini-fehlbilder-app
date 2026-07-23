@@ -457,3 +457,32 @@ Hinweis: Die Abschnitte 1–14 oben beschreiben den Stand bei `appv=10`. Der Cod
 - **Keine funktionierende Fehlbild-Erkennung**: Diese Runde liefert nur die geometrische Grundlage. 20-Felder-Klassifikation und Teamcode-OCR folgen erst in einer weiteren Runde, nachdem diese Grundlage auf echten Fotos und dem Zielgerät bestätigt wurde.
 - **Kopfstand-Erkennung ungelöst**: siehe `detectOrientation` oben – bewusste, dokumentierte Lücke.
 - Die bestehende Duplikatprüfung (nach `country`+`number`, nicht nach `code`) wurde nicht verändert – weiterhin anfällig für unterschiedliche Schreibweisen desselben Landes.
+
+## 16. Runde 2026-07-23 (Nacht), Versuch F: Festes Template + Foto/Grafik-Klassifikator (Erfolg)
+
+Direkt im Anschluss an Abschnitt 15. Ein separater Versuch am selben Abend (Geometrie + Kandidatenfelder + Ziffern-OCR, gemessen 13 % Trefferquote) ist in `legacy/2026-07-ocr-versuch-e/` archiviert – **dieser** Versuch hier ist ein anderer, erfolgreicher Ansatz.
+
+**Schlüsselerkenntnis:** Die Nummerierung 1–20 folgt auf jeder Team-Doppelseite exakt der Lesereihenfolge (linke Seite zuerst, zeilenweise) – bestätigt an sechs echten Fotos mit sichtbaren Nummern-Beschriftungen (Marokko, Haiti, Schottland, USA, Paraguay, Australien). Das feste Positions-Raster ist deshalb **kein** Rückfall auf die gescheiterte Idee von `detector.js` (feste Koordinaten ohne Entzerrung) – der Unterschied ist, dass jetzt zuerst korrekt entzerrt wird (Abschnitt 15) und danach ein Klassifikator statt eines OCR-Ziffernlesers entscheidet.
+
+Position 13 ist auf jeder Seite der Mannschaftsfoto-Slot (laut Nutzer-Angabe, bestätigt an mehreren Fotos: mal Mannschaftsfoto vorhanden, mal noch als Platzhalter-Grafik). Wird wie jeder andere Slot behandelt (leer/beklebt), keine Sonderbehandlung nötig.
+
+**Ansatz** (`detection/template.js`):
+
+1. Seite entzerren (bestehende Funktionen aus Abschnitt 15).
+2. 20 feste Positionsrechtecke auf dem entzerrten 1200×900-Bild (kalibriert und über mehrere Teams per Overlay visuell verifiziert).
+3. Pro Slot: Anzahl unterschiedlicher Farben im inneren Bereich zählen (Fotos haben deutlich mehr Farben als grafische Platzhalter). Kein Ziffern-OCR mehr nötig – der Teamcode bleibt weiterhin manuelle Eingabe.
+
+**Ehrlich gemessenes Ergebnis** (`tests/template.fixtures.test.js`, gegen alle 6 echten Testfotos = 120 Slot-Entscheidungen):
+
+**118 von 120 richtig (98,3 %), 0 Falsch-Positive, 2 Falsch-Negative** (jeweils knapp an der Schwelle, beide betreffen vermutlich schwieriger zu bewertende Slots). Schwellwert wurde an denselben 6 Fotos kalibriert, nicht an einem getrennten Testset – echte Generalisierung auf neue Fotos ist plausibel (klare Trennung in der Score-Verteilung), aber nicht separat bewiesen.
+
+Ergänzend im echten Browser (nicht nur Node.js) mit einem herunterskalierten Testfoto (900×675 statt Originalauflösung) geprüft: 8 von 9 richtig, 0 Falsch-Treffer – etwas empfindlicher bei niedrigerer Auflösung, aber weiterhin keine Falsch-Treffer.
+
+**In die App eingebaut** (`detection/ui.js`, weiterhin nur mit `?labs=1`): Der Button schlägt die erkannten fehlenden Nummern vor (trägt sie in das Nummern-Feld ein, wie ein manueller Vorschlag), speichert nichts automatisch. Teamcode bleibt manuelle Eingabe. Hinweistext macht die gemessene Genauigkeit und die fehlende Geräte-Bestätigung transparent.
+
+### Offene Punkte
+
+- **Kein Android-Gerätetest**: weiterhin nicht geprüft, ob Laufzeit/Speicher auf einem echten Handy im Browser akzeptabel sind. Die Rechenlast ist hier aber deutlich geringer als bei Versuch E (kein OCR, nur Pixel-Analyse über 20 kleine Bereiche) oder Versuch D (kein KI-Modell) – vermutlich unproblematisch, aber unbewiesen.
+- **Schwellwert an kleiner Stichprobe kalibriert** (6 Fotos, 120 Slots). Weitere echte Fotos würden die Zuverlässigkeit der Kalibrierung erhöhen.
+- **Teamcode wird weiterhin nicht automatisch erkannt** – bewusst nicht Teil dieses Versuchs, um den erfolgreichen Teil (Nummern-Vorschlag) nicht durch das bekannt fehleranfällige Ziffern-/Buchstaben-OCR zu gefährden.
+- Positions-Rechtecke sind ein Kompromiss über mehrere Fotos, nicht pixelgenau für jedes einzelne (siehe Kommentare in `detection/template.js`) – funktioniert dank Innenrand-Toleranz trotzdem zuverlässig, aber bei stark abweichenden Fotoausschnitten nicht ausgeschlossen, dass es an den Rändern ungenauer wird.

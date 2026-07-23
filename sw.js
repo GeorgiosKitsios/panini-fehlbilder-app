@@ -1,5 +1,5 @@
-const CACHE = 'panini-fehlbilder-v15';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg', './list-groups.js', './detection/geometry.js', './detection/ui.js'];
+const CACHE = 'panini-fehlbilder-v16';
+const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg', './list-groups.js', './detection/geometry.js', './detection/template.js', './detection/ui.js'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
