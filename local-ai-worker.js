@@ -2,7 +2,7 @@ import {
   AutoProcessor,
   AutoModelForVision2Seq,
   load_image,
-} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0';
+} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.1';
 
 const MODEL_ID = 'HuggingFaceTB/SmolVLM-256M-Instruct';
 let processorPromise = null;
