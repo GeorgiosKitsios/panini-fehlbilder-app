@@ -37,23 +37,21 @@ async function getModel() {
 
 const PROMPT = `You are inspecting one photographed team double-page from the Panini album Road to FIFA World Cup 2026.
 
-Return ONLY one compact valid JSON object. It must contain:
-- "code": the actual three-letter team code visible on this page.
-- "positions": an object with exactly the keys "1" through "20".
-- Every position value must be exactly one word: "filled", "empty", or "unclear".
-Do not output placeholders, angle brackets, pipe symbols, examples, or any additional keys.
+Inspect the actual photo and return exactly two short lines and nothing else.
+First line: write the word CODE, an equals sign, and the actual three-letter team code visible on this page.
+Second line: write the word STATE, an equals sign, and exactly 20 letters with no spaces. Character 1 is sticker position 1, character 20 is sticker position 20.
+Use only these letters in STATE:
+F = filled: a sticker covers the printed placeholder.
+E = empty: the printed placeholder is visible and no sticker covers it.
+U = unclear: the position is cropped, unreadable, or genuinely ambiguous.
 
 Rules:
 - Mentally orient the album page correctly even if the photo is rotated.
 - Identify the team from the large team heading and the repeated three-letter code printed inside that team's sticker placeholders.
-- Ignore three-letter codes in group tables, schedules, flags, or side panels belonging to other teams.
-- There are exactly 20 team sticker positions, numbered 1 through 20.
-- "empty": the printed placeholder is visible and no sticker covers it.
-- "filled": a player, team, shirt, badge, or other sticker covers the placeholder.
-- "unclear": only for a position that is genuinely unreadable, cropped, or ambiguous.
-- You must inspect and report all 20 positions individually. Never omit a number. Never repeat a number.
-- Never guess a status without actually looking at that specific position.
-- Do not explain the answer and do not use markdown.`;
+- Ignore codes in group tables, schedules, flags, or side panels belonging to other teams.
+- Inspect all 20 sticker positions individually and preserve their numeric order from 1 to 20.
+- Never invent a team code or position status.
+- Do not explain the answer. Do not use markdown, JSON, punctuation lists, or extra text.`;
 
 async function analyse(imageDataUrl) {
   const [processor, model] = await getModel();
@@ -74,7 +72,7 @@ async function analyse(imageDataUrl) {
     ...inputs,
     do_sample: false,
     repetition_penalty: 1.08,
-    max_new_tokens: 220,
+    max_new_tokens: 72,
   });
   const decoded = processor.batch_decode(output, {
     skip_special_tokens: true,
